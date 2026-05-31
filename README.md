@@ -1,4 +1,4 @@
-# obsidian-mcp
+﻿# obsidian-mcp
 
 [English](#english) | [中文](#中文)
 
@@ -51,7 +51,7 @@ pip install obsidian-mcp
 #### From source
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/obsidian-mcp.git
+git clone https://github.com/386522758/obsidian-mcp.git
 cd obsidian-mcp
 pip install -e .
 ```
@@ -213,7 +213,7 @@ pip install obsidian-mcp
 或从源码安装：
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/obsidian-mcp.git
+git clone https://github.com/386522758/obsidian-mcp.git
 cd obsidian-mcp
 pip install -e .
 ```
