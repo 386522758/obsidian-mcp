@@ -1,4 +1,4 @@
-[build-system]
+﻿[build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
@@ -9,7 +9,7 @@ description = "MCP server for Obsidian vault integration - lets AI agents read, 
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-authors = [{ name = "Yang Zibao" }]
+authors = [{ name = "Your Name" }]
 keywords = ["mcp", "obsidian", "notes", "ai", "agent"]
 classifiers = [
     "Development Status :: 4 - Beta",

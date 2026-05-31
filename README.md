@@ -51,7 +51,7 @@ pip install obsidian-mcp
 #### From source
 
 ```bash
-git clone https://github.com/386522758/obsidian-mcp.git
+git clone https://github.com/your-username/obsidian-mcp.git
 cd obsidian-mcp
 pip install -e .
 ```
@@ -213,7 +213,7 @@ pip install obsidian-mcp
 或从源码安装：
 
 ```bash
-git clone https://github.com/386522758/obsidian-mcp.git
+git clone https://github.com/your-username/obsidian-mcp.git
 cd obsidian-mcp
 pip install -e .
 ```
@@ -240,7 +240,7 @@ pip install -e .
     "obsidian": {
       "command": "obsidian-mcp",
       "env": {
-        "OBSIDIAN_VAULT_PATH": "E:\\vault\\杨自宝的知识库"
+        "OBSIDIAN_VAULT_PATH": "E:\\vault\\YourVault"
       }
     }
   }

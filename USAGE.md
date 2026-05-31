@@ -1,4 +1,4 @@
-# obsidian-mcp 使用说明
+﻿# obsidian-mcp 使用说明
 
 ## 这是什么
 
@@ -21,7 +21,7 @@ pip install obsidian-mcp
 或者从 GitHub 安装（最新版）：
 
 ```bash
-git clone https://github.com/386522758/obsidian-mcp.git
+git clone https://github.com/your-username/obsidian-mcp.git
 cd obsidian-mcp
 pip install -e .
 ```
@@ -38,7 +38,7 @@ pip install -e .
 
 | 变量 | 值 | 示例 |
 |------|-----|------|
-| `OBSIDIAN_VAULT_PATH` | 你的 vault 路径 | `E:\vault\杨自宝的知识库` |
+| `OBSIDIAN_VAULT_PATH` | 你的 vault 路径 | `E:\vault\YourVault` |
 
 ### 可选
 
@@ -69,7 +69,7 @@ pip install -e .
     "obsidian": {
       "command": "obsidian-mcp",
       "env": {
-        "OBSIDIAN_VAULT_PATH": "E:\\vault\\杨自宝的知识库"
+        "OBSIDIAN_VAULT_PATH": "E:\\vault\\YourVault"
       }
     }
   }
@@ -87,7 +87,7 @@ pip install -e .
   "command": "obsidian-mcp",
   "args": [],
   "env": {
-    "OBSIDIAN_VAULT_PATH": "E:\\vault\\杨自宝的知识库"
+    "OBSIDIAN_VAULT_PATH": "E:\\vault\\YourVault"
   }
 }
 ```
@@ -316,7 +316,7 @@ AI：[调用 obsidian_apply_template]
 ```json
 {
   "env": {
-    "OBSIDIAN_VAULT_PATH": "E:\\vault\\杨自宝的知识库",
+    "OBSIDIAN_VAULT_PATH": "E:\\vault\\YourVault",
     "OBSIDIAN_REST_API_ENABLED": "true",
     "OBSIDIAN_REST_API_TOKEN": "你的API Key"
   }
@@ -377,7 +377,7 @@ AI：[调用 obsidian_apply_template]
 
 ### Q: Windows 路径中的反斜杠
 
-在 JSON 配置中，反斜杠需要转义：`"E:\\vault\\杨自宝的知识库"`
+在 JSON 配置中，反斜杠需要转义：`"E:\\vault\\YourVault"`
 
 ### Q: Claude Desktop 改了配置后不生效
 
