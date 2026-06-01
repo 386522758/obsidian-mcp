@@ -19,7 +19,7 @@ from mcp.types import TextContent
 
 from .config import ObsidianConfig
 from .daily import DailyNotesManager
-from .memory import MemoryStore
+from .memory import UnifiedMemoryStore
 from .parser import parse_note, build_frontmatter, update_frontmatter, make_wikilink
 from .rest_api import ObsidianRestAPI
 from .search import SearchEngine
@@ -50,7 +50,7 @@ class ObsidianMCPServer:
         self.rest_api: ObsidianRestAPI | None = None
         self.templates: TemplateManager | None = None
         self.daily: DailyNotesManager | None = None
-        self.memory: MemoryStore | None = None
+        self.memory: UnifiedMemoryStore | None = None
         self._setup_done = False
 
     def _ensure_setup(self) -> None:
@@ -62,7 +62,7 @@ class ObsidianMCPServer:
         self.search = SearchEngine(self.config)
         self.templates = TemplateManager(self.config, self.vault)
         self.daily = DailyNotesManager(self.config, self.vault)
-        self.memory = MemoryStore(self.config, self.vault)
+        self.memory = UnifiedMemoryStore(self.config, self.vault)
         if self.config.rest_api_enabled:
             self.rest_api = ObsidianRestAPI(self.config)
         self._setup_done = True
@@ -418,34 +418,38 @@ class ObsidianMCPServer:
             category: str = "general",
             tags: str = "[]",
             importance: int = 3,
-            source: str = "agent",
+            agent: str = "agent",
             related_notes: str = "[]",
+            related_memories: str = "[]",
         ) -> list[TextContent]:
-            """Save a memory/knowledge item to Obsidian.
+            """Save a memory to the unified knowledge store.
 
-            Memories are stored as individual notes with metadata,
-            enabling future recall and knowledge building.
+            All agents share this memory pool. Duplicates are auto-detected
+            and merged. Each memory tracks which agent created it.
 
             Args:
                 content: The memory content to save
                 title: Title (auto-generated from content if empty)
-                category: Category (general, conversation, fact, task, insight, etc.)
+                category: fact/task/insight/conversation/preference/rule/general
                 tags: JSON array of additional tags
                 importance: 1 (low) to 5 (critical)
-                source: Where this memory came from (agent, user, conversation, etc.)
-                related_notes: JSON array of related note names for wikilinks
+                agent: Which agent is saving (codex/claude/cursor/user)
+                related_notes: JSON array of related vault note names
+                related_memories: JSON array of related memory IDs (mem-xxx)
             """
             self._ensure_setup()
             tag_list = json.loads(tags) if tags and tags != "[]" else None
             related = json.loads(related_notes) if related_notes and related_notes != "[]" else None
+            related_mems = json.loads(related_memories) if related_memories and related_memories != "[]" else None
             result = self.memory.save_memory(
                 content=content,
                 title=title,
                 category=category,
                 tags=tag_list,
                 importance=importance,
-                source=source,
+                agent=agent,
                 related_notes=related,
+                related_memories=related_mems,
             )
             return _json_text(result)
 
@@ -453,22 +457,31 @@ class ObsidianMCPServer:
         async def obsidian_recall_memories(
             query: str | None = None,
             category: str | None = None,
+            agent: str | None = None,
             min_importance: int = 1,
+            include_archived: bool = False,
             limit: int = 10,
         ) -> list[TextContent]:
-            """Search and retrieve stored memories from Obsidian.
+            """Search and retrieve memories from the unified knowledge store.
+
+            All agents share this memory pool - you can find memories
+            created by any agent.
 
             Args:
                 query: Text to search for (omit to list recent memories)
-                category: Filter by category
+                category: Filter by category (fact/task/insight/conversation/preference/rule)
+                agent: Filter by creator agent (codex/claude/cursor/user)
                 min_importance: Minimum importance level (1-5)
+                include_archived: Include archived memories in results
                 limit: Maximum results
             """
             self._ensure_setup()
             results = self.memory.recall_memories(
                 query=query,
                 category=category,
+                agent=agent,
                 min_importance=min_importance,
+                include_archived=include_archived,
                 limit=limit,
             )
             return _json_text({"count": len(results), "memories": results})
@@ -489,6 +502,67 @@ class ObsidianMCPServer:
         # ----------------------------------------------------------
 
         @self.server.tool()
+
+        # ----------------------------------------------------------
+        # Unified Memory - advanced tools
+        # ----------------------------------------------------------
+
+        @self.server.tool()
+        async def obsidian_memory_merge(
+            memory_ids: str,
+            merged_content: str,
+            title: str = "",
+            agent: str = "agent",
+            importance: int = 4,
+        ) -> list[TextContent]:
+            """Merge multiple memories into one consolidated memory.
+
+            Original memories are archived and a new merged memory is created
+            with references to the originals.
+
+            Args:
+                memory_ids: JSON array of memory IDs to merge (e.g. '["mem-xxx", "mem-yyy"]')
+                merged_content: The consolidated content
+                title: Title for the merged memory
+                agent: Which agent is performing the merge
+                importance: Importance level for the merged memory (1-5)
+            """
+            self._ensure_setup()
+            ids = json.loads(memory_ids)
+            result = self.memory.merge_memories(
+                ids, merged_content, title=title, agent=agent, importance=importance
+            )
+            return _json_text(result)
+
+        @self.server.tool()
+        async def obsidian_memory_access(memory_id: str) -> list[TextContent]:
+            """Mark a memory as accessed (bumps access count).
+
+            Args:
+                memory_id: The memory ID (mem-xxx) to mark as accessed
+            """
+            self._ensure_setup()
+            result = self.memory.access_memory(memory_id)
+            return _json_text(result or {"error": "Memory not found"})
+
+        @self.server.tool()
+        async def obsidian_memory_lifecycle() -> list[TextContent]:
+            """Run memory lifecycle maintenance.
+
+            Decays importance of unused memories and archives old low-importance ones.
+            Should be called periodically to keep the memory store healthy.
+            """
+            self._ensure_setup()
+            result = self.memory.run_lifecycle()
+            return _json_text(result)
+
+        @self.server.tool()
+        async def obsidian_memory_stats() -> list[TextContent]:
+            """Get memory store statistics (counts by agent, category, importance)."""
+            self._ensure_setup()
+            stats = self.memory.get_stats()
+            return _json_text(stats)
+
         async def obsidian_create_link(
             target: str,
             display: str | None = None,

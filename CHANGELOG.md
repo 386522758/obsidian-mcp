@@ -2,6 +2,49 @@
 
 All notable changes to obsidian-mcp will be documented in this file.
 
+## [0.2.0] - 2026-06-01
+
+### Added - Unified Memory System
+
+Cross-agent unified memory: all AI agents sharing the same Obsidian vault now share one memory pool.
+
+**New Tools:**
+- `obsidian_memory_merge` — Merge multiple scattered memories into one consolidated note, archive originals
+- `obsidian_memory_access` — Mark a memory as accessed (bumps access count and timestamp)
+- `obsidian_memory_lifecycle` — Run maintenance: decay unused memories, archive old low-importance ones
+- `obsidian_memory_stats` — Get statistics by agent, category, and importance
+
+**Enhanced Tools:**
+- `obsidian_save_memory` — New `agent` param (codex/claude/cursor/user), `related_memories` for memory-to-memory links, auto-dedup by content hash
+- `obsidian_recall_memories` — New `agent` filter, `include_archived` flag, memories from all agents searchable
+
+**Memory Schema (frontmatter):**
+```yaml
+type: memory
+memory_id: mem-<hash>
+category: fact | task | insight | conversation | preference | rule
+agent: codex | claude | cursor | user | ...
+importance: 1-5
+access_count: int
+created: ISO datetime
+updated: ISO datetime
+last_accessed: ISO datetime
+content_hash: str
+status: active | archived | decayed
+related: [mem-xxx, ...]
+merged_from: [mem-xxx, ...]
+```
+
+**Features:**
+- **Agent attribution**: every memory tracks which agent created it
+- **Deduplication**: same content from different agents merges agent fields instead of duplicating
+- **Memory linking**: memories reference each other forming a knowledge graph
+- **Importance decay**: unused memories lose weight after 30 days
+- **Auto-archive**: low-importance memories older than 90 days move to `memories/archive/`
+- **Memory merging**: combine scattered notes into consolidated knowledge with source tracking
+
+**Total tools: 28** (was 25)
+
 ## [0.1.1] - 2026-06-01
 
 ### Fixed
