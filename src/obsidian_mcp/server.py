@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Obsidian MCP Server.
 
 Exposes Obsidian vault operations as MCP tools for AI agents.
@@ -78,7 +78,7 @@ class ObsidianMCPServer:
         # Note CRUD
         # ----------------------------------------------------------
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_read_note(path: str) -> list[TextContent]:
             """Read and parse an Obsidian note.
 
@@ -103,7 +103,7 @@ class ObsidianMCPServer:
                 "modified": note.modified.isoformat() if note.modified else None,
             })
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_create_note(
             path: str,
             content: str = "",
@@ -127,7 +127,7 @@ class ObsidianMCPServer:
                 "title": note.title,
             })
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_update_note(
             path: str,
             content: str | None = None,
@@ -153,7 +153,7 @@ class ObsidianMCPServer:
                 "title": note.title,
             })
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_delete_note(path: str) -> list[TextContent]:
             """Delete an Obsidian note.
 
@@ -164,7 +164,7 @@ class ObsidianMCPServer:
             self.vault.delete_note(path)
             return _json_text({"status": "deleted", "path": path})
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_move_note(source: str, destination: str) -> list[TextContent]:
             """Move or rename an Obsidian note.
 
@@ -180,7 +180,7 @@ class ObsidianMCPServer:
         # Listing & navigation
         # ----------------------------------------------------------
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_list_notes(
             folder: str = "",
             recursive: bool = True,
@@ -195,7 +195,7 @@ class ObsidianMCPServer:
             notes = self.vault.list_notes(folder=folder, recursive=recursive)
             return _json_text({"count": len(notes), "notes": notes})
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_list_folders(folder: str = "") -> list[TextContent]:
             """List subdirectories in a vault folder.
 
@@ -206,7 +206,7 @@ class ObsidianMCPServer:
             folders = self.vault.list_folders(folder=folder)
             return _json_text({"folders": folders})
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_get_backlinks(note_name: str) -> list[TextContent]:
             """Find all notes that link to a given note via wikilinks.
 
@@ -217,7 +217,7 @@ class ObsidianMCPServer:
             backlinks = self.vault.get_backlinks(note_name)
             return _json_text({"note": note_name, "backlinks": backlinks})
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_get_graph() -> list[TextContent]:
             """Get the vault's link graph showing wikilink relationships between all notes."""
             self._ensure_setup()
@@ -228,7 +228,7 @@ class ObsidianMCPServer:
         # Search
         # ----------------------------------------------------------
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_search(
             query: str,
             folder: str = "",
@@ -260,7 +260,7 @@ class ObsidianMCPServer:
                 ],
             })
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_search_by_tag(tag: str, limit: int = 50) -> list[TextContent]:
             """Find all notes with a specific tag.
 
@@ -279,7 +279,7 @@ class ObsidianMCPServer:
                 ],
             })
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_search_by_metadata(
             key: str,
             value: str | None = None,
@@ -308,7 +308,7 @@ class ObsidianMCPServer:
         # Frontmatter helpers
         # ----------------------------------------------------------
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_update_frontmatter(
             path: str,
             metadata: str,
@@ -332,14 +332,14 @@ class ObsidianMCPServer:
         # Templates
         # ----------------------------------------------------------
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_list_templates() -> list[TextContent]:
             """List available Obsidian templates."""
             self._ensure_setup()
             templates = self.templates.list_templates()
             return _json_text({"count": len(templates), "templates": templates})
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_apply_template(
             template: str,
             note_path: str,
@@ -366,7 +366,7 @@ class ObsidianMCPServer:
         # Daily notes
         # ----------------------------------------------------------
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_get_daily_note(date: str | None = None) -> list[TextContent]:
             """Get or create a daily note.
 
@@ -387,7 +387,7 @@ class ObsidianMCPServer:
                 "frontmatter": note.frontmatter,
             })
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_append_daily(
             content: str,
             date: str | None = None,
@@ -411,7 +411,7 @@ class ObsidianMCPServer:
         # Memory / Knowledge store
         # ----------------------------------------------------------
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_save_memory(
             content: str,
             title: str = "",
@@ -449,7 +449,7 @@ class ObsidianMCPServer:
             )
             return _json_text(result)
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_recall_memories(
             query: str | None = None,
             category: str | None = None,
@@ -473,7 +473,7 @@ class ObsidianMCPServer:
             )
             return _json_text({"count": len(results), "memories": results})
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_forget_memory(path: str) -> list[TextContent]:
             """Delete a stored memory.
 
@@ -488,7 +488,7 @@ class ObsidianMCPServer:
         # Wikilink helpers
         # ----------------------------------------------------------
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_create_link(
             target: str,
             display: str | None = None,
@@ -506,7 +506,7 @@ class ObsidianMCPServer:
         # Vault stats
         # ----------------------------------------------------------
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_vault_stats() -> list[TextContent]:
             """Get statistics about the Obsidian vault (note count, size, etc.)."""
             self._ensure_setup()
@@ -517,7 +517,7 @@ class ObsidianMCPServer:
         # REST API tools (only when enabled)
         # ----------------------------------------------------------
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_rest_search(
             query: str,
             context_length: int = 100,
@@ -537,7 +537,7 @@ class ObsidianMCPServer:
             results = self.rest_api.search(query, context_length)
             return _json_text({"query": query, "results": results})
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_open_in_app(path: str) -> list[TextContent]:
             """Open a note in the Obsidian application.
 
@@ -552,7 +552,7 @@ class ObsidianMCPServer:
             result = self.rest_api.open_note(path)
             return _json_text(result)
 
-        @self.server.tool
+        @self.server.tool()
         async def obsidian_rest_api_status() -> list[TextContent]:
             """Check if the Obsidian Local REST API is available."""
             self._ensure_setup()
