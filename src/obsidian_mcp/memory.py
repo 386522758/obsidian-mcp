@@ -3,13 +3,14 @@
 All AI agents connecting to the same Obsidian vault share one memory pool.
 Memories are stored as structured Obsidian notes with rich metadata.
 
-Features:
-- Agent attribution: tracks which agent created each memory
-- Deduplication: detects and merges similar memories
-- Memory linking: memories reference each other forming a knowledge graph
-- Importance decay: unused memories lose weight, important ones persist
-- Unified search: any agent can find memories from all other agents
-- Memory merging: combine scattered notes into consolidated knowledge
+Directory structure:
+    memories/
+    ├── README.md              # Auto-generated index
+    ├── codex/                 # Codex memories
+    ├── claude/                # Claude memories
+    ├── cursor/                # Cursor memories
+    ├── shared/                # Merged/shared memories
+    └── archive/               # Archived memories
 """
 
 from __future__ import annotations
@@ -27,11 +28,14 @@ from .vault import Vault
 # Memory note prefix for filename sorting
 _MEMORY_PREFIX = "mem-"
 
+# Known agent names for folder routing
+_KNOWN_AGENTS = ("codex", "claude", "cursor", "user")
+
 # Memory lifecycle constants
-DECAY_DAYS = 30          # importance drops by 1 after 30 days of no access
-MIN_IMPORTANCE = 1       # floor
-MAX_IMPORTANCE = 5       # ceiling
-ARCHIVE_AFTER_DAYS = 90  # move to memories/archive/ after 90 days at min importance
+DECAY_DAYS = 30
+MIN_IMPORTANCE = 1
+MAX_IMPORTANCE = 5
+ARCHIVE_AFTER_DAYS = 90
 
 
 def _content_hash(content: str) -> str:
@@ -51,26 +55,16 @@ def _safe_title(title: str, max_len: int = 60) -> str:
     return safe or "untitled"
 
 
+def _agent_folder(agent: str) -> str:
+    """Map agent name to its subfolder."""
+    agent_lower = agent.lower().split(",")[0].strip()  # take first agent if merged
+    if agent_lower in _KNOWN_AGENTS:
+        return agent_lower
+    return "shared"
+
+
 class UnifiedMemoryStore:
-    """Cross-agent unified memory system.
-
-    Memories are Obsidian notes with this frontmatter schema:
-
-        type: memory
-        memory_id: mem-<hash>
-        category: fact | task | insight | conversation | preference | rule
-        agent: codex | claude | cursor | user | ...
-        importance: 1-5
-        access_count: int
-        created: ISO datetime
-        updated: ISO datetime
-        last_accessed: ISO datetime
-        content_hash: str (for dedup)
-        tags: [memory, <category>, ...]
-        related: [mem-xxx, mem-yyy, ...]   (links to other memories)
-        merged_from: [mem-xxx, ...]         (if this memory was merged)
-        status: active | archived | decayed
-    """
+    """Cross-agent unified memory system."""
 
     def __init__(self, config: ObsidianConfig, vault: Vault) -> None:
         self.config = config
@@ -93,22 +87,15 @@ class UnifiedMemoryStore:
         related_notes: list[str] | None = None,
         related_memories: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Save a memory. Detects duplicates and merges if found.
+        """Save a memory to the unified store.
 
-        Args:
-            content: Memory content
-            title: Title (auto-generated if empty)
-            category: fact/task/insight/conversation/preference/rule/general
-            tags: Additional tags
-            importance: 1-5
-            agent: Which agent is saving (codex/claude/cursor/user)
-            related_notes: Links to vault notes (wikilink names)
-            related_memories: Links to other memory IDs (mem-xxx)
+        Memories are routed to agent-specific subfolders:
+            memories/<agent>/mem-<hash>_<title>.md
         """
         now = datetime.now()
         content_hash = _content_hash(content)
 
-        # Dedup: check for existing memory with same content hash
+        # Dedup
         existing = self._find_by_hash(content_hash)
         if existing:
             return self._update_existing(existing, content, agent, importance)
@@ -120,10 +107,11 @@ class UnifiedMemoryStore:
 
         memory_id = f"{_MEMORY_PREFIX}{content_hash}"
         safe_title = _safe_title(title)
+        agent_dir = _agent_folder(agent)
         filename = f"{memory_id}_{safe_title}"
-        path = f"{self.folder}/{filename}"
+        path = f"{self.folder}/{agent_dir}/{filename}"
 
-        memory_tags = ["memory", category]
+        memory_tags = ["memory", category, agent_dir]
         if tags:
             memory_tags.extend(tags)
 
@@ -153,12 +141,17 @@ class UnifiedMemoryStore:
             body += f"\n**Related memories:** {mem_links}"
 
         note = self.vault.create_note(path, content=body, frontmatter=frontmatter)
+
+        # Update the index
+        self._update_index()
+
         return {
             "memory_id": memory_id,
             "path": f"{path}.md",
             "title": title,
             "category": category,
             "agent": agent,
+            "folder": agent_dir,
             "importance": frontmatter["importance"],
             "dedup": False,
         }
@@ -176,16 +169,7 @@ class UnifiedMemoryStore:
         include_archived: bool = False,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
-        """Search and retrieve memories.
-
-        Args:
-            query: Text search (None = list recent)
-            category: Filter by category
-            agent: Filter by creator agent
-            min_importance: Minimum importance level
-            include_archived: Include archived memories
-            limit: Max results
-        """
+        """Search and retrieve memories from all agent folders."""
         from .search import SearchEngine
         engine = SearchEngine(self.config)
         results: list[dict[str, Any]] = []
@@ -204,28 +188,28 @@ class UnifiedMemoryStore:
                         continue
                     if category and r.frontmatter.get("category") != category:
                         continue
-                    if agent and r.frontmatter.get("agent") != agent:
+                    if agent and agent not in r.frontmatter.get("agent", ""):
                         continue
                     results.append(self._format_result(r.path, r.name, r.snippet, r.frontmatter, r.tags))
             else:
-                notes = self.vault.list_notes(folder=folder, recursive=False)
+                notes = self.vault.list_notes(folder=folder, recursive=True)
                 for note in notes[-limit * 2:]:
                     try:
                         parsed = self.vault.read_note(note["path"])
-                        if parsed.frontmatter.get("type") != "memory":
-                            continue
-                        if parsed.frontmatter.get("importance", 1) < min_importance:
-                            continue
-                        if category and parsed.frontmatter.get("category") != category:
-                            continue
-                        if agent and parsed.frontmatter.get("agent") != agent:
-                            continue
-                        results.append(self._format_result(
-                            note["path"], parsed.title, parsed.body[:200],
-                            parsed.frontmatter, parsed.tags
-                        ))
                     except (FileNotFoundError, OSError):
                         continue
+                    if parsed.frontmatter.get("type") != "memory":
+                        continue
+                    if parsed.frontmatter.get("importance", 1) < min_importance:
+                        continue
+                    if category and parsed.frontmatter.get("category") != category:
+                        continue
+                    if agent and agent not in parsed.frontmatter.get("agent", ""):
+                        continue
+                    results.append(self._format_result(
+                        note["path"], parsed.title, parsed.body[:200],
+                        parsed.frontmatter, parsed.tags
+                    ))
 
         results.sort(key=lambda r: (r.get("importance", 0), r.get("created", "")), reverse=True)
         return results[:limit]
@@ -235,7 +219,7 @@ class UnifiedMemoryStore:
     # ------------------------------------------------------------------
 
     def access_memory(self, memory_id: str) -> dict[str, Any] | None:
-        """Mark a memory as accessed (bumps access_count and last_accessed)."""
+        """Mark a memory as accessed."""
         note = self._find_by_id(memory_id)
         if not note:
             return None
@@ -258,7 +242,7 @@ class UnifiedMemoryStore:
         tags: list[str] | None = None,
         agent: str | None = None,
     ) -> dict[str, Any] | None:
-        """Update an existing memory's content or metadata."""
+        """Update an existing memory."""
         note = self._find_by_id(memory_id)
         if not note:
             return None
@@ -273,6 +257,7 @@ class UnifiedMemoryStore:
         if agent:
             updates["agent"] = agent
         self.vault.update_note(note["path"], frontmatter_updates=updates)
+        self._update_index()
         return {"memory_id": memory_id, "updated": True}
 
     # ------------------------------------------------------------------
@@ -284,9 +269,13 @@ class UnifiedMemoryStore:
         if path_or_id.startswith(_MEMORY_PREFIX):
             note = self._find_by_id(path_or_id)
             if note:
-                return self.vault.delete_note(note["path"])
+                result = self.vault.delete_note(note["path"])
+                self._update_index()
+                return result
             return False
-        return self.vault.delete_note(path_or_id)
+        result = self.vault.delete_note(path_or_id)
+        self._update_index()
+        return result
 
     def archive_memory(self, memory_id: str) -> bool:
         """Move a memory to the archive folder."""
@@ -298,24 +287,19 @@ class UnifiedMemoryStore:
         dst = f"{self.archive_folder}/{filename}"
         self.vault.move_note(src.replace(".md", ""), dst.replace(".md", ""))
         self.vault.update_note(dst, frontmatter_updates={"status": "archived"})
+        self._update_index()
         return True
 
     # ------------------------------------------------------------------
-    # Lifecycle: decay & archive
+    # Lifecycle
     # ------------------------------------------------------------------
 
     def run_lifecycle(self) -> dict[str, Any]:
-        """Run memory lifecycle maintenance.
-        
-        - Decay: reduce importance for memories not accessed recently
-        - Archive: move low-importance old memories to archive
-        
-        Returns summary of actions taken.
-        """
+        """Run memory lifecycle: decay + archive."""
         now = datetime.now()
         decayed = 0
         archived = 0
-        notes = self.vault.list_notes(folder=self.folder, recursive=False)
+        notes = self.vault.list_notes(folder=self.folder, recursive=True)
         for note_info in notes:
             try:
                 parsed = self.vault.read_note(note_info["path"])
@@ -325,7 +309,6 @@ class UnifiedMemoryStore:
             if fm.get("type") != "memory" or fm.get("status") == "archived":
                 continue
 
-            # Parse last_accessed
             last_str = fm.get("last_accessed", fm.get("created"))
             if not last_str:
                 continue
@@ -337,7 +320,6 @@ class UnifiedMemoryStore:
             days_since = (now - last_accessed).days
             importance = fm.get("importance", 3)
 
-            # Decay
             if days_since > DECAY_DAYS and importance > MIN_IMPORTANCE:
                 new_imp = importance - 1
                 self.vault.update_note(
@@ -350,11 +332,11 @@ class UnifiedMemoryStore:
                 decayed += 1
                 importance = new_imp
 
-            # Archive low-importance old memories
             if days_since > ARCHIVE_AFTER_DAYS and importance <= MIN_IMPORTANCE:
                 self.archive_memory(fm.get("memory_id", ""))
                 archived += 1
 
+        self._update_index()
         return {"decayed": decayed, "archived": archived}
 
     # ------------------------------------------------------------------
@@ -369,11 +351,7 @@ class UnifiedMemoryStore:
         agent: str = "agent",
         importance: int = 4,
     ) -> dict[str, Any]:
-        """Merge multiple memories into one consolidated memory.
-        
-        The original memories are archived, and a new merged memory
-        is created with references to the originals.
-        """
+        """Merge multiple memories into one, archive originals."""
         if len(memory_ids) < 2:
             raise ValueError("Need at least 2 memories to merge")
 
@@ -386,7 +364,6 @@ class UnifiedMemoryStore:
         if not sources:
             raise ValueError("No valid memories found to merge")
 
-        # Save merged memory
         result = self.save_memory(
             content=merged_content,
             title=title or f"Merged: {', '.join(s['title'][:20] for s in sources[:3])}",
@@ -396,11 +373,9 @@ class UnifiedMemoryStore:
             related_memories=memory_ids,
         )
 
-        # Archive originals
         for src in sources:
             self.archive_memory(src["id"])
 
-        # Tag the new memory as merged
         self.vault.update_note(
             result["path"],
             frontmatter_updates={"merged_from": memory_ids},
@@ -414,27 +389,8 @@ class UnifiedMemoryStore:
         }
 
     # ------------------------------------------------------------------
-    # Stats / Categories
+    # Stats / Index
     # ------------------------------------------------------------------
-
-    def list_categories(self) -> list[dict[str, Any]]:
-        """List all memory categories with counts."""
-        cats: dict[str, int] = {}
-        agents: dict[str, int] = {}
-        notes = self.vault.list_notes(folder=self.folder, recursive=False)
-        for note_info in notes:
-            try:
-                parsed = self.vault.read_note(note_info["path"])
-            except (FileNotFoundError, OSError):
-                continue
-            fm = parsed.frontmatter
-            if fm.get("type") != "memory":
-                continue
-            cat = fm.get("category", "general")
-            agent = fm.get("agent", "unknown")
-            cats[cat] = cats.get(cat, 0) + 1
-            agents[agent] = agents.get(agent, 0) + 1
-        return [{"categories": cats, "agents": agents, "total": sum(cats.values())}]
 
     def get_stats(self) -> dict[str, Any]:
         """Get memory store statistics."""
@@ -471,13 +427,122 @@ class UnifiedMemoryStore:
             "avg_importance": round(total_importance / max(active + archived, 1), 1),
         }
 
+    def _update_index(self) -> None:
+        """Regenerate the memories/README.md index note."""
+        try:
+            self._ensure_folders()
+            stats = self.get_stats()
+            notes = self.vault.list_notes(folder=self.folder, recursive=True)
+
+            # Group memories by agent folder
+            by_folder: dict[str, list[dict]] = {}
+            for note_info in notes:
+                try:
+                    parsed = self.vault.read_note(note_info["path"])
+                except (FileNotFoundError, OSError):
+                    continue
+                fm = parsed.frontmatter
+                if fm.get("type") != "memory":
+                    continue
+                # Determine folder from path
+                rel = note_info["path"].replace(f"{self.folder}/", "")
+                parts = rel.split("/")
+                folder = parts[0] if len(parts) > 1 else "root"
+                if folder not in by_folder:
+                    by_folder[folder] = []
+                by_folder[folder].append({
+                    "id": fm.get("memory_id", ""),
+                    "title": parsed.title,
+                    "agent": fm.get("agent", ""),
+                    "category": fm.get("category", ""),
+                    "importance": fm.get("importance", 0),
+                    "created": fm.get("created", ""),
+                    "status": fm.get("status", "active"),
+                    "path": note_info["path"].replace(f"{self.folder}/", ""),
+                })
+
+            # Build markdown
+            now = datetime.now().strftime("%Y-%m-%d %H:%M")
+            lines = [
+                "# Memory Index",
+                f"> Auto-generated by obsidian-mcp | Updated: {now}",
+                "",
+                "---",
+                "",
+                "## Overview",
+                "",
+                f"- **Active memories:** {stats['active_memories']}",
+                f"- **Archived:** {stats['archived_memories']}",
+                f"- **By agent:** {', '.join(f'{k}({v})' for k, v in stats['by_agent'].items())}",
+                f"- **By category:** {', '.join(f'{k}({v})' for k, v in stats['by_category'].items())}",
+                "",
+                "---",
+                "",
+            ]
+
+            # Per-folder sections
+            folder_order = ["codex", "claude", "cursor", "shared", "root", "archive"]
+            folder_labels = {
+                "codex": "Codex Memories",
+                "claude": "Claude Desktop Memories",
+                "cursor": "Cursor Memories",
+                "shared": "Shared / Merged Memories",
+                "root": "Unsorted Memories",
+                "archive": "Archived Memories",
+            }
+
+            for folder in folder_order:
+                mems = by_folder.get(folder, [])
+                if not mems:
+                    continue
+                label = folder_labels.get(folder, folder.title())
+                lines.append(f"## {label}")
+                lines.append("")
+                for m in sorted(mems, key=lambda x: x.get("created", ""), reverse=True):
+                    imp = "*" * m["importance"] if m["importance"] else "-"
+                    status_badge = " `[archived]`" if m["status"] == "archived" else ""
+                    lines.append(
+                        f"- [[{Path(m['path']).stem}]] "
+                        f"{m['category']} | {m['agent']} | imp:{imp}{status_badge}"
+                    )
+                lines.append("")
+
+            # Also list any folders we haven't covered
+            for folder, mems in by_folder.items():
+                if folder not in folder_order and mems:
+                    lines.append(f"## {folder.title()} Memories")
+                    lines.append("")
+                    for m in sorted(mems, key=lambda x: x.get("created", ""), reverse=True):
+                        imp = "*" * m["importance"] if m["importance"] else "-"
+                        lines.append(
+                            f"- [[{Path(m['path']).stem}]] "
+                            f"{m['category']} | {m['agent']} | imp:{imp}"
+                        )
+                    lines.append("")
+
+            index_content = "\n".join(lines)
+            index_path = f"{self.folder}/README.md"
+            try:
+                self.vault.read_note(index_path)
+                self.vault.update_note(index_path, content=index_content)
+            except FileNotFoundError:
+                self.vault.create_note(index_path, content=index_content)
+        except Exception:
+            pass  # Don't let index generation break memory operations
+
+    def _ensure_folders(self) -> None:
+        """Create agent subfolders if they don't exist."""
+        for agent in ["codex", "claude", "cursor", "shared", "archive"]:
+            folder_path = self.config.resolve_path(f"{self.folder}/{agent}")
+            folder_path.mkdir(parents=True, exist_ok=True)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     def _find_by_hash(self, content_hash: str) -> dict[str, Any] | None:
         """Find a memory by its content hash."""
-        notes = self.vault.list_notes(folder=self.folder, recursive=False)
+        notes = self.vault.list_notes(folder=self.folder, recursive=True)
         for note_info in notes:
             try:
                 parsed = self.vault.read_note(note_info["path"])
@@ -509,14 +574,13 @@ class UnifiedMemoryStore:
             "last_accessed": now,
             "access_count": existing["frontmatter"].get("access_count", 0) + 1,
         }
-        # Keep higher importance
         if importance > existing["frontmatter"].get("importance", 0):
             updates["importance"] = importance
-        # Track all contributing agents
         existing_agents = existing["frontmatter"].get("agent", "unknown")
         if agent not in existing_agents:
             updates["agent"] = f"{existing_agents},{agent}"
         self.vault.update_note(existing["path"], frontmatter_updates=updates)
+        self._update_index()
         return {
             "memory_id": existing["frontmatter"].get("memory_id"),
             "path": existing["path"],
