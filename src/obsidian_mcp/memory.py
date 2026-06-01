@@ -445,7 +445,8 @@ class UnifiedMemoryStore:
                 if fm.get("type") != "memory":
                     continue
                 # Determine folder from path
-                rel = note_info["path"].replace(f"{self.folder}/", "")
+                # Normalize path separators for cross-platform
+                rel = note_info["path"].replace("\\", "/").replace(f"{self.folder}/", "")
                 parts = rel.split("/")
                 folder = parts[0] if len(parts) > 1 else "root"
                 if folder not in by_folder:
