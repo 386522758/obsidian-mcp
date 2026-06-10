@@ -91,7 +91,11 @@ class ObsidianConfig:
         """Resolve a path relative to the vault root, with safety checks."""
         target = (self.vault_path / relative_path).resolve()
         vault_resolved = self.vault_path.resolve()
-        if not str(target).startswith(str(vault_resolved)):
+        # Use relative_to() instead of startswith() so that a sibling directory
+        # sharing a path prefix (e.g. /vault-sibling vs /vault) is correctly rejected.
+        try:
+            target.relative_to(vault_resolved)
+        except ValueError:
             raise ValueError(
                 f"Path traversal detected: {relative_path} escapes vault root"
             )

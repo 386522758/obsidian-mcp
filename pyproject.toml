@@ -28,5 +28,22 @@ dependencies = [
 [project.scripts]
 obsidian-mcp = "obsidian_mcp.server:main"
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--tb=short"
+
+[tool.coverage.run]
+source = ["src/obsidian_mcp"]
+omit = ["src/obsidian_mcp/server.py", "src/obsidian_mcp/rest_api.py"]
+
+[tool.coverage.report]
+show_missing = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/obsidian_mcp"]

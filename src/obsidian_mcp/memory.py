@@ -200,6 +200,8 @@ class UnifiedMemoryStore:
                         continue
                     if parsed.frontmatter.get("type") != "memory":
                         continue
+                    if not include_archived and parsed.frontmatter.get("status") == "archived":
+                        continue
                     if parsed.frontmatter.get("importance", 1) < min_importance:
                         continue
                     if category and parsed.frontmatter.get("category") != category:
