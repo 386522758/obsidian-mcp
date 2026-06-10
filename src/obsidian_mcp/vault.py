@@ -163,14 +163,13 @@ class Vault:
             if append:
                 new_content = new_content.rstrip("\n") + "\n\n" + content
             else:
-                # Replace body but keep frontmatter
-                _, _ = __import__("obsidian_mcp.parser", fromlist=["parse_frontmatter"]).parse_frontmatter(new_content)
-                new_content = update_frontmatter(existing, frontmatter_updates)
-                # Re-build with new body
-                fm_str = new_content.split("---\n", 2)[1] if new_content.startswith("---") else ""
-                if fm_str:
-                    fm_end = fm_str.index("---\n")
-                    new_content = f"---\n{fm_str[:fm_end]}---\n\n{content}"
+                # Replace body, keep updated frontmatter.
+                # split("---\n", 2) yields ["", yaml_block, old_body]
+                parts = new_content.split("---\n", 2)
+                if len(parts) == 3:
+                    new_content = f"---\n{parts[1]}---\n\n{content}"
+                else:
+                    new_content = new_content + content
         elif frontmatter_updates:
             new_content = update_frontmatter(existing, frontmatter_updates)
         elif content is not None:
