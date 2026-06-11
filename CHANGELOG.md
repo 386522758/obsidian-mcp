@@ -2,6 +2,39 @@
 
 All notable changes to obsidian-mcp will be documented in this file.
 
+## [0.4.0] - 2026-06-11
+
+### Fixed — Core bugs
+
+- **Path traversal vulnerability** (`config.resolve_path`): The previous `str.startswith()` check allowed sibling directories sharing a path prefix (e.g. `/vault-sibling`) to bypass the vault boundary guard. Replaced with `Path.relative_to()` which enforces a true directory boundary.
+- **`vault.update_note` crash** when updating both frontmatter and body simultaneously: `fm_str.index("---\n")` always raised `ValueError` because `split("---\n", 2)` already isolates the YAML block — there is no second `---\n` inside it. Fixed the string splitting logic.
+- **`memory.recall_memories` leaked archived memories**: The `archive/` folder is a subdirectory of `memories/`, so recursive listing always included archived notes even when `include_archived=False`. Added an explicit `status != "archived"` filter.
+- **`UnifiedMemoryStore._ensure_folders()` never called at startup**: The server's `_ensure_setup()` created the `UnifiedMemoryStore` but did not create the required agent subfolders, causing `FileNotFoundError` on the first `obsidian_save_memory` call on a fresh vault.
+- **`obsidian_create_link` tool silently missing**: A dangling `@self.server.tool()` decorator was misplaced in the source, leaving `obsidian_create_link` as an unregistered local function. It is now a proper MCP tool.
+- **`obsidian_forget_memory` always reported success**: The return value of `forget_memory()` was ignored; the tool now returns `{"error": "Memory not found"}` when the memory does not exist.
+
+### Changed — MCP server (`server.py`)
+
+- **Async REST API client** (`rest_api.py`): Replaced synchronous `httpx.Client` with `httpx.AsyncClient`. All REST API methods are now `async def`, preventing event loop blocking during network I/O.
+- **Structured error responses**: Every tool handler now catches `FileNotFoundError`, `FileExistsError`, `ValueError`, and `json.JSONDecodeError` and returns `{"error": "..."}` instead of propagating exceptions into the MCP session.
+- **Guarded JSON parsing**: All `json.loads()` calls use a new `_parse_json()` helper that produces clear error messages on malformed input.
+- **Conditional REST tool registration**: `obsidian_rest_search`, `obsidian_open_in_app`, and `obsidian_rest_api_status` are only registered when `OBSIDIAN_REST_API_ENABLED=true`, keeping the tool list clean for users who don't use the plugin.
+- **`obsidian_search`**: Added `case_sensitive` parameter (was supported by the search engine but not exposed).
+- **`obsidian_get_graph`**: Added `limit` parameter (default 500, set to 0 for unlimited) to prevent large vaults from filling the AI context window with graph data.
+
+### Added — Test suite
+
+- Complete test coverage from 0% across all core modules (160 tests, ~0.8 s).
+- `pytest` + `pytest-cov` added as dev dependencies.
+- `tests/conftest.py`: shared `tmp_vault` / `config` / `vault` fixtures backed by `tmp_path`.
+- `tests/test_config.py` (16 tests): path traversal cases, `from_env`, `.obsidian/app.json` loading.
+- `tests/test_parser.py` (34 tests): frontmatter parsing, wikilinks, tags, embeds, callouts, build/update round-trips.
+- `tests/test_vault.py` (43 tests): full CRUD, all four `update_note` branches, backlinks, link graph.
+- `tests/test_search.py` (26 tests): boolean operators (`+required`, `-excluded`), folder scoping, tag/metadata/link search.
+- `tests/test_memory.py` (41 tests): save/dedup, recall filters, lifecycle decay/archive, merge, forget.
+
+**Total tools: 28** (unchanged — `obsidian_create_link` was already listed but is now actually registered)
+
 ## [0.3.0] - 2026-06-02
 
 ### Added - Agent-Based Memory Directory
